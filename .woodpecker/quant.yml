@@ -1,19 +1,26 @@
 ---
 steps:
-  - name: quant
-    image: ghcr.io/ggerganov/llama.cpp:full
+  quant:
+    image: "ghcr.io/ggerganov/llama.cpp:full"
     environment:
       MODEL_DIR: /data
       QUANTS: "Q2_K Q5_K_M Q4_K_M Q8_0"
       THREADS: "16"
       VOCAB_TYPE: hfft
       ## HF Repo path:
-      #SOURCE: "nold/model-name"
+      #SOURCE: SeaLLMs/SeaLLM-7B-v2
       
-    commands:
-      - pip3 install -U "huggingface_hub[cli]"
-      - /bin/bash /quantizer.sh
+      HF_HUB_ENABLE_HF_TRANSFER: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      LLAMA_PATH: /app
+    when:
+      event: manual
     secrets:
       - hf_token
     volumes:
-      - /data
+      - data:/data
+    commands:
+      - apt-get update && apt-get install -y --no-install-recommends gettext-base
+      - pip3 install -U "huggingface_hub[cli]" hf_transfer
+      - git config --global credential.helper store
+      - /bin/bash quantizer.sh

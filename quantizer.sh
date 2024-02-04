@@ -1,23 +1,23 @@
 #!/bin/bash
 set -u
 set -e
+LLAMA_PATH=/app
+export HF_HUB_ENABLE_HF_TRANSFER=1
+export HF_HUB_DISABLE_TELEMETRY=1
+export MODEL_NAME=$(echo $SOURCE | awk -F/ '{print $NF}')
 
 #HF_TOKEN=
 huggingface-cli login --token ${HF_TOKEN} --add-to-git-credential
 
-LLAMA_PATH=/app
 # MODEL_DIR=/data
 # QUANTS="Q2_K Q5_K_M Q4_K_M Q8_0"
 # THREADS=16
 # VOCAB_TYPE=hfft
 
 PATH=$PATH:${LLAMA_PATH}
-export HF_HUB_ENABLE_HF_TRANSFER=1
-export HF_HUB_DISABLE_TELEMETRY=1
 
 # Input can be path to model, model name or git url
 #export SOURCE=$1
-export MODEL_NAME=$(echo $SOURCE | awk -F/ '{print $NF}')
 MODEL_PATH="${MODEL_DIR}/${MODEL_NAME}"
 CACHE_DIR=${MODEL_DIR}/.cache
 OUTPUT_DIR=${MODEL_DIR}/quants/${MODEL_NAME}
