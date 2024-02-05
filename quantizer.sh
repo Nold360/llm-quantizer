@@ -4,9 +4,13 @@ set -e
 LLAMA_PATH=/app
 export HF_HUB_ENABLE_HF_TRANSFER=1
 export HF_HUB_DISABLE_TELEMETRY=1
+
+# We need these in envsubst later..
 export MODEL_NAME=$(echo $SOURCE | awk -F/ '{print $NF}')
+export CREATOR=$(echo $SOURCE | awk -F/ '{print $1}')
 
 #HF_TOKEN=
+MODEL_SUFFIX="GGUF"
 huggingface-cli login --token ${HF_TOKEN} --add-to-git-credential
 
 # MODEL_DIR=/data
@@ -47,11 +51,11 @@ for quant in ${QUANTS}; do
 done
 
 # 4. Release Quant
-echo " ---> Releasing Quantized Model as nold/${MODEL_NAME}-GGUF ..."
+echo " ---> Releasing Quantized Model as ${ORG}/${MODEL_NAME}-${MODEL_SUFFIX} ..."
 cp $(find ${MODEL_PATH} -maxdepth 1 -type f -iname readme.md | head -1) ${OUTPUT_DIR}/README.md
 
 cat FOOTER.md | envsubst >> ${OUTPUT_DIR}/README.md
 
-huggingface-cli upload --repo-type model "nold/${MODEL_NAME}-GGUF" "${OUTPUT_DIR}" .
+huggingface-cli upload --repo-type model "${ORG}/${MODEL_NAME}-${MODEL_SUFFIX}" "${OUTPUT_DIR}" .
 
 echo "Done."
