@@ -2,4 +2,4 @@
 
 ***
 
-Vanilla Quantization by [nold](https://huggingface.co/nold), Model by [${CREATOR}](https://huggingface.co/${SOURCE}). Created using [llm-quantizer](https://github.com/Nold360/llm-quantizer) Pipeline - ${CI_COMMIT_SHA} 
+Vanilla Quantization by [nold](https://huggingface.co/nold), Original Model [${MODEL_ID}](https://huggingface.co/${MODEL_ID}). Created using [llm-quantizer](https://github.com/Nold360/llm-quantizer) Pipeline - ${CI_COMMIT_SHA} 
