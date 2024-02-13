@@ -1,19 +1,17 @@
 ---
 variables:
   - &llama_image 'ghcr.io/ggerganov/llama.cpp:full'
+  - &hf_image 'python:3.10-slim'
   - pre_cmds: &pre_cmds
     - export MODEL_NAME=$(echo $MODEL_ID | awk -F/ '{print $$NF}')
     - export MODEL_PATH="$${MODEL_DIR}/$${MODEL_NAME}"
     - export OUTPUT_DIR="$${MODEL_DIR}/quants/$${MODEL_NAME}"
     # FIXME: We should have an image will all deps
-    - pip3 install -U "huggingface_hub[cli]" hf_transfer
-    - git config --global credential.helper store
-    - apt-get update && apt-get install -y --no-install-recommends gettext-base
 
   - env: &env
     ## HF Repo path:
-    #- MODEL_ID=ise-uiuc/Magicoder-S-DS-6.7B
-    - QUANTS=Q2_K Q5_K_M Q4_K_M Q8_0
+    # - MODEL_ID=LargeWorldModel/LWM-Text-Chat-512K
+    - QUANTS=Q2_K Q4_K_M Q5_K_M Q6_K Q8_0
     - ORG=nold
 
     - THREADS=16
@@ -23,7 +21,6 @@ variables:
     - MODEL_DIR=/data
     - CACHE_DIR=/data/.cache
       
-    - HF_HUB_ENABLE_HF_TRANSFER=1
     - HF_HUB_DISABLE_TELEMETRY=1
     - LLAMA_PATH=/app
 
@@ -32,16 +29,29 @@ when:
 
 steps:
   get_model:
-    image: *llama_image
+    image: *hf_image
     environment:
       - <<: *env
+      - HF_HUB_ENABLE_HF_TRANSFER=1
     volumes:
       - data:/data
     commands:
       - <<: *pre_cmds
+      - apt-get update && apt-get install -y --no-install-recommends gettext-base
+      - pip3 install -U "huggingface_hub[cli]" hf_transfer
+      #- git config --global credential.helper store
       - mkdir -p $${OUTPUT_DIR} $${CACHE_DIR}
-      - env
+
+      # Download Model
       - huggingface-cli download --cache-dir $${CACHE_DIR} --local-dir "$${MODEL_PATH}" "$${MODEL_ID}"
+
+      # Copy README & Append Footer
+      - >
+        if [ ! -f $${OUTPUT_DIR}/README.md ] ; then 
+          cp $(find $${MODEL_PATH} -maxdepth 1 -type f -iname readme.md |\
+            head -1) $${OUTPUT_DIR}/README.md
+          cat FOOTER.md | envsubst >> $${OUTPUT_DIR}/README.md
+        fi
 
   convert:
     image: *llama_image
@@ -81,19 +91,21 @@ steps:
       - convert
 
   release:
-    image: *llama_image
+    image: *hf_image
     environment:
       - <<: *env
+      - HF_HUB_DISABLE_EXPERIMENTAL_WARNING=1
+      - HF_HUB_ENABLE_HF_TRANSFER=0
     secrets:
       - hf_token
     volumes:
       - data:/data
     commands:
       - <<: *pre_cmds
+      - pip3 install -U "huggingface_hub[cli]" hf_transfer
+
       - echo " ---> Releasing Quantized Model as $${ORG}/$${MODEL_NAME}-$${MODEL_SUFFIX} ..."
-      - huggingface-cli login --token $${HF_TOKEN} --add-to-git-credential
-      - cp $(find $${MODEL_PATH} -maxdepth 1 -type f -iname readme.md | head -1) $${OUTPUT_DIR}/README.md
-      - cat FOOTER.md | envsubst >> $${OUTPUT_DIR}/README.md
-      - huggingface-cli upload --repo-type model "$${ORG}/$${MODEL_NAME}-$${MODEL_SUFFIX}" "$${OUTPUT_DIR}" .
+      - export HF_REPO_NAME="$${ORG}/$${MODEL_NAME}-$${MODEL_SUFFIX}" 
+      - python3 scripts/upload.py
     depends_on: 
       - quantize
