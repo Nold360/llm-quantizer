@@ -1,5 +1,6 @@
 import os
 from huggingface_hub import HfApi, HfFolder, create_repo
+from requests.exceptions import HTTPError
 
 # Retrieve the Hugging Face API token from the environment
 repo_name = os.getenv("HF_REPO_NAME")
