@@ -1,0 +1,47 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: llm-quant-
+spec:
+  podTemplate:
+    securityContext:
+      fsGroup: 65534
+
+  params:
+    - name: model
+      value: Test157t/Prima-LelantaclesV3-7b
+
+    - name: org
+      value: nold
+
+    - name: llama-image
+      value: reg.dc/llama.cpp
+
+    # - name: vocab-type
+    #   value: spm
+    #
+    - name: quants
+      value: "Q4_K_M Q5_K_M Q6_K Q8_0"
+
+
+  pipelineRef:
+    name: quantize-release-model 
+
+  workspaces:
+    - name: workspace
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 100Gi
+
+    - name: output
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 100Gi

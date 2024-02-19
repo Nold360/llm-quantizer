@@ -1,0 +1,141 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: hf-llama-quantizer
+
+spec:
+  description: |
+    this pipeline offers a typical CI/CD process, with a flow including:
+    - fetching a huggingface model repository as the source
+    - convert to GGUF
+    - quantize
+    - test a quantized model using llama.cpp
+    - release to hf
+  
+  # Parameters
+  params:
+    - name: model
+      type: string
+      description: The hf repository ID to clone from. e.g. MistralAI/Mistral-7B-Instruct
+
+    - name: org
+      type: string
+      description: Huggingface organization or account name used for upload
+
+    - name: llama-image
+      type: string
+      description: Container image containing llama.cpp
+      default: ghcr.io/ggerganov/llama.cpp:full
+
+    - name: vocab-type
+      type: string
+      description: Vocab-Type of Model, required for gguf convertion fallback
+      default: "hfft"
+
+    - name: quants
+      type: string
+      description: Quantizations to generate
+      default: "Q4_K_M Q5_K_M Q6_K Q8_0"
+
+    - name: suffix
+      type: string
+      description: Suffix that will be added to the new HF repo name
+      default: GGUF
+
+  workspaces:
+  - name: workspace
+  - name: output
+
+  tasks:
+  # Download Model from HF
+  - name: get-model
+    retries: 3
+    taskRef:
+      name: hf-download
+    params:
+    - name: model
+      value: $(params.model)
+    workspaces:
+    - name: output
+      workspace: workspace
+
+  # Convert HF Model to GGUF
+  - name: convert-to-gguf
+    runAfter:
+      - get-model
+    params:
+      - name: vocab-type
+        value: $(params.vocab-type)
+      - name: image
+        value: $(params.llama-image)
+    taskRef:
+      name: hf-gguf-convert
+    workspaces:
+      - name: input
+        workspace: workspace
+
+  # Quantize GGUF Model
+  - name: quantize-model
+    runAfter:
+      - convert-to-gguf
+    taskRef:
+      name: gguf-quantize
+    params:
+      - name: model
+        value: $(params.model)
+      - name: quants
+        value: $(params.quants)
+      - name: image
+        value: $(params.llama-image)
+    workspaces:
+      - name: input
+        workspace: workspace
+      - name: output
+        workspace: output
+  
+  # Load a quantized model into llama.cpp & have a chat
+  - name: test
+    runAfter:
+      - quantize-model
+    taskRef:
+      name: llama-chat
+    params:
+      - name: model
+        value: $(tasks.quantize-model.results.files[0])
+    workspaces:
+      - name: input
+        workspace: output
+
+  # Do something before release
+  - name: prepare-release
+    runAfter:
+      - test
+    taskRef:
+      name: hf-prepare-release
+    params:
+      - name: repo
+        value: $(params.model)
+    workspaces:
+      - name: input
+        workspace: workspace
+      - name: output
+        workspace: output
+
+  # Upload new model files to HF
+  - name: release
+    retries: 3
+    runAfter:
+      - prepare-release
+    taskRef:
+      name: hf-upload
+    timeout: "12h0m0s"
+    params:
+      - name: org
+        value: $(params.org)
+      - name: repo
+        value: "$(params.model)"
+      - name: suffix
+        value: $(params.suffix)
+    workspaces:
+      - name: input
+        workspace: output
