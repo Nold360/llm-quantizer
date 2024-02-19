@@ -1,0 +1,66 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: llama-chat
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.12.1"
+    tekton.dev/tags: llm
+    tekton.dev/platforms: "linux/amd64,linux/s390x,linux/ppc64le"
+spec:
+  description: >-
+    Test Run an exisiting Chat Model
+
+  params:
+  - name: model
+    description: Path to model file
+    type: string
+
+  - name: prompt
+    description: Prompt to be passed on to model
+    type: string
+    default: "What is a Large Language Model?"
+
+  - name: temp
+    description: temperature
+    type: string
+    default: "1"
+
+  - name: max-tokens
+    description: Max Tokens to use for output of model
+    type: string
+    default: "512"
+
+  - name: image
+    description: llama.cpp image to use
+    type: string
+    default: "ghcr.io/ggerganov/llama.cpp:light"
+
+  workspaces:
+  - name: input
+    description: The folder containing the model
+
+  results:
+  - name: output
+    description: Answer of the Model
+
+  steps:
+  - name: chat
+    image: "$(params.image)"
+    args: 
+      - -m 
+      - "$(params.model)"
+      - -p
+      - "$(params.prompt)"
+      - -n
+      - "$(params.max-tokens)"
+      - --temp
+      - "$(params.temp)"
+    stdoutConfig:
+      path: $(results.output.path)
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+      runAsGroup: 65534
+    workingDir: $(workspaces.input.path)

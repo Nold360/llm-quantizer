@@ -1,0 +1,45 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: hf-prepare-release
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.12.1"
+    tekton.dev/platforms: "linux/amd64,linux/s390x,linux/ppc64le"
+spec:
+  description: >-
+    This task addes the original models readme + footer to the repo
+
+  params:
+  - name: repo
+    description: The Repo-ID on HF e.g. `TheBloke/CapybaraHermes-2.5-Mistral-7B-GPTQ`
+    type: string
+
+  - name: image
+    description: The container image to be used
+    type: string
+    default: "reg.dc/hf:latest"
+
+  workspaces:
+  - name: input
+    description: The folder containing the source model
+  - name: output
+    description: The folder containing the data to release
+
+  steps:
+  - name: prepare-release
+    image: "$(params.image)"
+    env:
+      - name: MODEL_ID
+        value: $(params.repo)
+      - name: MODEL_PATH
+        value: $(workspaces.input.path)
+      - name: OUTPUT_DIR
+        value: $(workspaces.output.path)
+    script: |-
+      #!/bin/bash
+      cp $(find ${MODEL_PATH} -maxdepth 1 -type f -iname readme.md | head -1) ${OUTPUT_DIR}/README.md
+      echo -e "\n\n***\n\nQuantization of Model [${MODEL_ID}](https://huggingface.co/${MODEL_ID})." >> ${OUTPUT_DIR}/README.md
+      echo 'Created using [llm-quantizer](https://github.com/Nold360/llm-quantizer) Pipeline' >> ${OUTPUT_DIR}/README.md
+

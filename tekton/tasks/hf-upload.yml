@@ -1,0 +1,120 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: hf-upload
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.12.1"
+    tekton.dev/categories: CLI
+    tekton.dev/tags: download
+    tekton.dev/platforms: "linux/amd64,linux/s390x,linux/ppc64le"
+spec:
+  description: >-
+    This task uses huggingface python sdk to upload a model.
+    Requires HF API Token as Secret "hf-token"
+
+  params:
+  - name: org
+    description: Organisation name to upload to
+    type: string
+
+  - name: repo
+    description: The Repo-ID on HF e.g. `TheBloke/CapybaraHermes-2.5-Mistral-7B-GPTQ`
+    type: string
+
+  - name: suffix
+    description: Suffix to append to release repo name
+    type: string
+    default: "GGUF"
+
+  - name: repo-type
+    description: Type of repo to create eg. `dataset`, `model`, `space`
+    type: string
+    default: model
+
+  - name: image
+    description: The container image to be used
+    type: string
+    default: "reg.dc/hf:latest"
+
+  workspaces:
+  - name: input
+    description: The folder containing the data to release
+
+  steps:
+  - name: upload
+    image: "$(params.image)"
+    env:
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: hf-token
+            key: token
+      - name: HF_REPO_NAME
+        value: $(params.repo)
+      - name: HF_REPO_ORG
+        value: $(params.org)
+      - name: HF_REPO_SUFFIX
+        value: $(params.suffix)
+      - name: OUTPUT_DIR
+        value: $(workspaces.input.path)
+      - name: HF_HOME
+        value: /tmp
+      - name: HF_HUB_ENABLE_HF_TRANSFER
+        value: "0"
+      - name: HF_HUB_DISABLE_TELEMETRY
+        value: "1"
+      - name: HF_HUB_DISABLE_EXPERIMENTAL_WARNING
+        value: "1"
+    script: |-
+      #!/usr/bin/env python3
+      import os
+      from huggingface_hub import HfApi, HfFolder, create_repo
+      from requests.exceptions import HTTPError
+
+      # Retrieve the Hugging Face API token from the environment
+      repo_org = os.getenv("HF_REPO_ORG")
+      repo_suffix = os.getenv("HF_REPO_SUFFIX")
+      folder_path = os.getenv("OUTPUT_DIR")
+      hf_token = os.getenv("HF_TOKEN")
+      src_repo_name = os.getenv("HF_REPO_NAME")
+      assert(src_repo_name)
+      assert(repo_org)
+      assert(repo_suffix)
+      assert(folder_path)
+      assert(hf_token)
+
+      repo_name = repo_org + "/" + src_repo_name.split("/")[1] + "-" + repo_suffix
+      assert(repo_name)
+      # Initialize the Hugging Face API
+      api = HfApi()
+      HfFolder.save_token(hf_token)
+      user_info = api.whoami(hf_token)
+      print(f"Logged in as {user_info['email']}")
+
+      # Create repo if not exists:
+      try:
+          api.repo_info(repo_id=repo_name)
+      except HTTPError as e:
+          if e.response.status_code == 404:
+              create_repo(repo_name, repo_type="model")
+          else:
+              raise  # Re-raise the exception for any other HTTP errors
+
+      # Upload the folder contents to the specified repository
+      print(f"Data uploading to: https://huggingface.co/{repo_name}")
+      api.upload_folder(
+          token=hf_token,
+          repo_id=repo_name,
+          folder_path=folder_path,
+          repo_type="model",
+          multi_commits=True,
+          multi_commits_verbose=True,
+      )
+
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+      runAsGroup: 65534
+    workingDir: $(workspaces.input.path)

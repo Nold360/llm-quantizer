@@ -1,0 +1,85 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: gguf-quantize
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.12.1"
+    tekton.dev/categories: CLI
+    tekton.dev/tags: llm
+    tekton.dev/platforms: "linux/amd64,linux/s390x,linux/ppc64le"
+spec:
+  description: >-
+    Quantize a GGUF Model. The generated filenames will be returned as results array.
+
+  params:
+  - name: model
+    description: Model-ID of the source model
+    type: string
+
+  - name: quants
+    description: Quantizations to build
+    type: string
+    default: "Q2_K Q4_K_M Q5_K_M Q6_K Q8_0"
+
+  - name: threads
+    description: CPU Threads to use for Quantization
+    type: string
+    default: "8"
+
+  - name: image
+    description: llama.cpp image to use
+    type: string
+    default: "ghcr.io/ggerganov/llama.cpp:full"
+
+  - name: llama-path
+    description: Path to llama.cpp git checkout in container (image)
+    type: string
+    default: "/app"
+
+  workspaces:
+  - name: input
+    description: The folder containing the huggingface model
+  - name: output
+    description: Output folder for quantized model files
+
+  results:
+    - name: files
+      type: array
+      description: Array of filenames of generated models
+
+  # Convert using convert-hf-to-gguf.py, with fallback to convert.py
+  steps:
+  - name: quantize
+    image: "$(params.image)"
+    env:
+      - name: MODEL_ID
+        value: $(params.model)
+      - name: MODEL_PATH
+        value: "$(workspaces.input.path)"
+      - name: OUTPUT_DIR
+        value: "$(workspaces.output.path)"
+      - name: THREADS
+        value: "$(params.threads)"
+      - name: QUANTS
+        value: "$(params.quants)"
+
+    script: |-
+      #!/bin/bash
+      MODEL_NAME=$(echo ${MODEL_ID} | cut -f2 -d/)
+      set -u
+      result="["
+
+      for QUANT in ${QUANTS}; do
+        ./quantize "${MODEL_PATH}/ggml-model-f16.gguf" "${OUTPUT_DIR}/${MODEL_NAME}_${QUANT}.gguf" "${QUANT}" "$THREADS"
+        result="${result} \"${MODEL_NAME}_${QUANT}.gguf\","
+      done
+
+      echo -n "${result::-1}]" > $(results.files.path) 
+
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+      runAsGroup: 65534
+    workingDir: $(params.llama-path)

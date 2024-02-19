@@ -1,0 +1,53 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: hf-download
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.12.1"
+    tekton.dev/categories: CLI
+    tekton.dev/tags: download
+    tekton.dev/platforms: "linux/amd64,linux/s390x,linux/ppc64le"
+spec:
+  description: >-
+    This task uses huggingface cli to download a model
+
+  params:
+  - name: model
+    description: The model-ID on HF e.g. `TheBloke/CapybaraHermes-2.5-Mistral-7B-GPTQ`
+    type: string
+  - name: image
+    description: The container image to be used
+    type: string
+    default: "reg.dc/hf:latest"
+
+  workspaces:
+  - name: output
+    description: The folder where we write the downloaded'ed model to
+  - name: cache
+    description: hf-cli cache
+    mountpath: /tmp
+    optional: true
+
+  steps:
+  - name: obtain-model
+    image: "$(params.image)"
+    env:
+      - name: HF_HUB_ENABLE_HF_TRANSFER
+        value: "1"
+      - name: HF_HUB_DISABLE_TELEMETRY
+        value: "1"
+    command: [huggingface-cli]
+    args: 
+      - download 
+      - --cache-dir 
+      - $(workspaces.cache.path)
+      - --local-dir
+      - $(workspaces.output.path)
+      - $(params.model)
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+      runAsGroup: 65534
+    workingDir: $(workspaces.output.path)
